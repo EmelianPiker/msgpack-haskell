@@ -13,8 +13,9 @@ import           Network.MessagePack.Server (Server, method, serve)
 main :: IO ()
 main = withSocketsDo $ defaultMain $
   testGroup "simple service"
-  [ testCase "test_simple" $ server `race_` (threadDelay 1000 >> client)
-  , testCase "test_async"  $ server `race_` (threadDelay 1000 >> concurrentClients)
+  [ testCase "test_simple"      $ server `race_` (threadDelay 1000 >> client)
+  , testCase "test_async_small" $ server `race_` (threadDelay 1000 >> concurrentClients 2)
+  , testCase "test_async_big"   $ server `race_` (threadDelay 1000 >> concurrentClients 1000)
   ]
 
 port :: Int
@@ -49,8 +50,8 @@ customClient number = execClient "127.0.0.1" port $ do
     echo :: String -> Client String
     echo = call "echo"
 
-concurrentClients :: IO ()
-concurrentClients = do
-  let tests = [1, 2]
+concurrentClients :: Int -> IO ()
+concurrentClients size = do
+  let tests = [1 .. size]
   () <$ forConcurrently tests customClient
 
