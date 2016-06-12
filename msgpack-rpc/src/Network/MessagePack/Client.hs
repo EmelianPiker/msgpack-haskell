@@ -55,14 +55,18 @@ import           Control.Monad.Trans               (MonadIO, liftIO)
 
 import           Data.Binary                       as Binary
 import qualified Data.ByteString                   as S
-import           Data.Conduit
+import           Data.Conduit                      (ResumableSource, Sink, ($$),
+                                                    ($$+), ($$++))
 import qualified Data.Conduit.Binary               as CB
-import           Data.Conduit.Network
-import           Data.Conduit.Serialization.Binary
+import           Data.Conduit.Network              (appSink, appSource,
+                                                    clientSettings,
+                                                    runTCPClient)
+import           Data.Conduit.Serialization.Binary (sinkGet)
 import           Data.HashMap.Strict               (HashMap)
 import qualified Data.HashMap.Strict               as HM
-import           Data.MessagePack
-import           Data.Typeable
+import           Data.MessagePack                  (MessagePack (fromObject, toObject),
+                                                    Object, pack)
+import           Data.Typeable                     (Typeable)
 
 -- | RPC connection type
 data Connection

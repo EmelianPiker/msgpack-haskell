@@ -41,18 +41,22 @@ module Network.MessagePack.Server (
   serve,
   ) where
 
-import           Control.Monad
-import           Control.Monad.Catch
-import           Control.Monad.Trans
-import           Control.Monad.Trans.Control
-import           Data.Binary
-import           Data.Conduit
+import           Control.Monad                     (when)
+import           Control.Monad.Catch               (Exception, MonadCatch,
+                                                    MonadThrow (throwM), try)
+import           Control.Monad.Trans               (MonadIO, MonadTrans (lift))
+import           Control.Monad.Trans.Control       (MonadBaseControl)
+import           Data.Binary                       (get)
+import           Data.Conduit                      (($$), ($$+), ($$++))
 import qualified Data.Conduit.Binary               as CB
-import           Data.Conduit.Network
-import           Data.Conduit.Serialization.Binary
-import           Data.List
-import           Data.MessagePack
-import           Data.Typeable
+import           Data.Conduit.Network              (appSink, appSource,
+                                                    runGeneralTCPServer,
+                                                    serverSettings)
+import           Data.Conduit.Serialization.Binary (ParseError, sinkGet)
+import           Data.List                         (find)
+import           Data.MessagePack                  (MessagePack, Object,
+                                                    fromObject, pack, toObject)
+import           Data.Typeable                     (Typeable)
 
 -- ^ MessagePack RPC method
 data Method m
