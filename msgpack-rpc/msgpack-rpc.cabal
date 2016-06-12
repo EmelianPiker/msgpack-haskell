@@ -53,3 +53,4 @@ test-suite msgpack-rpc-test
                   , tasty              >=0.10
                   , tasty-hunit        >=0.9
                   , msgpack-rpc
+                  , unordered-containers
