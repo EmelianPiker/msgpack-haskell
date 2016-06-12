@@ -37,6 +37,8 @@ library
                   , exceptions         >=0.8
                   , binary             >=0.7
                   , msgpack            >=1.0
+                  , extra
+                  , unordered-containers
 
 test-suite msgpack-rpc-test
   default-language: Haskell2010

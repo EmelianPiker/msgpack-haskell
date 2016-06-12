@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveDataTypeable         #-}
+{-# LANGUAGE FlexibleContexts           #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 -------------------------------------------------------------------
@@ -30,7 +31,11 @@
 
 module Network.MessagePack.Client (
   -- * MessagePack Client type
-  Client, execClient,
+  Connection,
+  IOMapRef,
+  Client,
+  execClient,
+  execClientWithMap,
 
   -- * Call RPC method
   call,
@@ -39,22 +44,26 @@ module Network.MessagePack.Client (
   RpcError(..),
   ) where
 
-import           Control.Exception
-import           Control.Monad
-import           Control.Monad.Catch
-import           Control.Monad.State.Strict        as CMS
+import           Control.Exception                 (Exception)
+import           Control.Monad                     (when)
+import           Control.Monad.Catch               (MonadThrow (..))
+import           Control.Monad.Reader              (MonadReader, ReaderT, ask,
+                                                    runReaderT)
+--import           Control.Monad.State.Strict        as CMS
+import           Control.Monad.Trans               (MonadIO, liftIO)
+
 import           Data.Binary                       as Binary
 import qualified Data.ByteString                   as S
 import           Data.Conduit
 import qualified Data.Conduit.Binary               as CB
 import           Data.Conduit.Network
 import           Data.Conduit.Serialization.Binary
+import           Data.HashMap.Strict               (HashMap)
+import qualified Data.HashMap.Strict               as HM
+import           Data.IORef                        (IORef, newIORef, readIORef,
+                                                    writeIORef)
 import           Data.MessagePack
 import           Data.Typeable
-
-newtype Client a
-  = ClientT { runClient :: StateT Connection IO a }
-  deriving (Functor, Applicative, Monad, MonadIO, MonadThrow)
 
 -- | RPC connection type
 data Connection
@@ -63,11 +72,38 @@ data Connection
     !(Sink S.ByteString IO ())
     !Int
 
+type IOMapRef    = IORef (HashMap (S.ByteString, Int) Connection)
+--type ClientState = (IOMapRef, (S.ByteString, Int))
+data ClientState = ClientState
+  { refMap     :: IOMapRef
+  , clientAddr :: (S.ByteString, Int)
+  }
+
+newtype Client a
+  = ClientT { runClient :: ReaderT ClientState IO a }
+  deriving (Functor, Applicative, Monad, MonadIO,
+            MonadReader ClientState, MonadThrow)
+
 execClient :: S.ByteString -> Int -> Client a -> IO ()
-execClient host port m =
+execClient host port client = do
+  emptyMap <- newIORef HM.empty
+  execClientWithMap emptyMap host port client
+
+execClientWithMap :: IOMapRef -> S.ByteString -> Int -> Client a -> IO ()
+execClientWithMap hashMapRef host port m = do
+  hashMap    <- readIORef hashMapRef
+  let keyPair = (host, port)
+  let mConn   = HM.lookup (host, port) hashMap
+
   runTCPClient (clientSettings port host) $ \ad -> do
-    (rsrc, _) <- appSource ad $$+ return ()
-    void $ evalStateT (runClient m) (Connection rsrc (appSink ad) 0)
+    case mConn of
+      Nothing -> do
+        (rsrc, _) <- appSource ad $$+ return ()
+        let newConnection = Connection rsrc (appSink ad) 0
+        writeIORef hashMapRef $ HM.insert keyPair newConnection hashMap
+      _       -> return ()
+
+    () <$ runReaderT (runClient m) (ClientState hashMapRef keyPair)
 
 -- | RPC error type
 data RpcError
@@ -92,12 +128,18 @@ instance (MessagePack o, RpcType r) => RpcType (o -> r) where
   rpcc m args arg = rpcc m (toObject arg:args)
 
 rpcCall :: String -> [Object] -> Client Object
-rpcCall methodName args = ClientT $ do
-  Connection rsrc sink msgid <- CMS.get
-  (rsrc', res) <- lift $ do
+rpcCall methodName args = do
+  ClientState hashMapRef myAddr <- ask
+  hashMap <- liftIO $ readIORef hashMapRef
+  let Just (Connection rsrc sink msgid) = HM.lookup myAddr hashMap
+
+  (rsrc', res) <- liftIO $ do
     CB.sourceLbs (pack (0 :: Int, msgid, methodName, args)) $$ sink
     rsrc $$++ sinkGet Binary.get
-  CMS.put $ Connection rsrc' sink (msgid + 1)
+
+  let updatedConnection = Connection rsrc' sink (msgid + 1)
+  let updatedMap        = HM.insert myAddr updatedConnection hashMap
+  liftIO $ writeIORef hashMapRef updatedMap
 
   case fromObject res of
     Nothing -> throwM $ ProtocolError "invalid response data"
