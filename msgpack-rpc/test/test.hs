@@ -1,14 +1,14 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-import           Control.Concurrent
-import           Control.Concurrent.Async
-import           Control.Monad.Trans
-import           Test.Tasty
-import           Test.Tasty.HUnit
+import           Control.Concurrent         (threadDelay)
+import           Control.Concurrent.Async   (race_)
+import           Control.Monad.Trans        (liftIO)
+import           Test.Tasty                 (defaultMain, testGroup)
+import           Test.Tasty.HUnit           (testCase, (@?=))
 
 import           Network                    (withSocketsDo)
-import           Network.MessagePack.Client
-import           Network.MessagePack.Server
+import           Network.MessagePack.Client (Client, call, execClient)
+import           Network.MessagePack.Server (Server, method, serve)
 
 port :: Int
 port = 5000
