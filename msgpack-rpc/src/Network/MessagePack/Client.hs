@@ -46,7 +46,7 @@ module Network.MessagePack.Client (
 
 import           Control.Concurrent.MVar           (MVar, newMVar, putMVar,
                                                     takeMVar)
-import           Control.Exception                 (Exception)
+import           Control.Exception                 (Exception, bracket)
 import           Control.Monad                     (when)
 import           Control.Monad.Catch               (MonadThrow (..))
 import           Control.Monad.Reader              (MonadReader, ReaderT, ask,
@@ -68,6 +68,12 @@ import           Data.MessagePack                  (MessagePack (fromObject, toO
                                                     Object, pack)
 import           Data.Typeable                     (Typeable)
 
+import           Data.Streaming.Network.Internal   (AppData (appCloseConnection'))
+--import           Data.Streaming.Network            (getSocketFamilyTCP, safeRecv)
+--import           Data.Streaming.Network.Internal   (AppData (..), ClientSettings (..))
+--import qualified Network.Socket                    as NS
+--import           Network.Socket.ByteString         (sendAll)
+
 -- | RPC connection type
 data Connection
   = Connection
@@ -86,6 +92,19 @@ newtype Client a
   deriving (Functor, Applicative, Monad, MonadIO,
             MonadReader ClientState, MonadThrow)
 
+--runTCPClientUnclose :: ClientSettings -> (AppData -> IO a) -> IO a
+--runTCPClientUnclose (ClientSettings port host addrFamily readBufferSize) app = bracket
+--    (getSocketFamilyTCP host port addrFamily)
+--    (NS.sClose . fst)
+--    (\(s, address) -> app AppData
+--        { appRead' = safeRecv s readBufferSize
+--        , appWrite' = sendAll s
+--        , appSockAddr' = address
+--        , appLocalAddr' = Nothing
+--        , appCloseConnection' = return ()
+--        , appRawSocket' = Just s
+--        })
+
 execClient :: S.ByteString -> Int -> Client a -> IO ()
 execClient host port client = do
   emptyMap <- newMVar HM.empty
@@ -97,11 +116,12 @@ execClientWithMap hashMapVar host port m = do
   let keyPair = (host, port)
   let mConn   = HM.lookup (host, port) hashMap
 
-  runTCPClient (clientSettings port host) $ \ad -> do
+  runTCPClient (clientSettings port host) $ \appData -> do
+    let unclosableAppData = appData { appCloseConnection' = return () }
     case mConn of
       Nothing -> do
-        (rsrc, _) <- appSource ad $$+ return ()
-        let newConnection = Connection rsrc (appSink ad) 0
+        (rsrc, _) <- appSource unclosableAppData $$+ return ()
+        let newConnection = Connection rsrc (appSink unclosableAppData) 0
         let newMap        = HM.insert keyPair newConnection hashMap
         putMVar hashMapVar newMap
       Just _  ->
