@@ -20,9 +20,9 @@ main = withSocketsDo $ defaultMain $
   testGroup "simple service"
   [ testCase "test_simple"      $ server `race_` (threadDelay 1000 >> client 123)
   , testCase "test_async_small" $ server `race_` (threadDelay 1000 >> concurrentClients 2)
-  , testCase "test_async_big"   $ server `race_` (threadDelay 1000 >> concurrentClients 1000)
+  , testCase "test_async_big"   $ server `race_` (threadDelay 1000 >> concurrentClients 10)
   , testCase "test_map_small"   $ server `race_` (threadDelay 1000 >> twoClientsWithMap)
-  , testCase "test_map_async"   $ server `race_` (threadDelay 1000 >> concurrentClientsWithMap 2)
+  , testCase "test_map_async"   $ server `race_` (threadDelay 1000 >> concurrentClientsWithMap 10)
   ]
 
 port :: Int
@@ -74,6 +74,6 @@ twoClientsWithMap = do
 
 concurrentClientsWithMap :: Int -> IO ()
 concurrentClientsWithMap size = do
-  lruMapVar <- newMVar $ LRU.newLRU $ Just $ toInteger size
+  lruMapVar <- newMVar $ LRU.newLRU $ Just $ toInteger (size `div` 2)
   let tests   = [1 .. size]
   () <$ forConcurrently tests (clientWithMap lruMapVar)
