@@ -68,11 +68,13 @@ import           Data.MessagePack                  (MessagePack (fromObject, toO
                                                     Object, pack)
 import           Data.Typeable                     (Typeable)
 
+import           Data.Streaming.Network            (getSocketFamilyTCP,
+                                                    safeRecv)
 import           Data.Streaming.Network.Internal   (AppData (appCloseConnection'))
---import           Data.Streaming.Network            (getSocketFamilyTCP, safeRecv)
---import           Data.Streaming.Network.Internal   (AppData (..), ClientSettings (..))
---import qualified Network.Socket                    as NS
---import           Network.Socket.ByteString         (sendAll)
+import           Data.Streaming.Network.Internal   (AppData (..),
+                                                    ClientSettings (..))
+import qualified Network.Socket                    as NS
+import           Network.Socket.ByteString         (sendAll)
 
 -- | RPC connection type
 data Connection
@@ -92,18 +94,19 @@ newtype Client a
   deriving (Functor, Applicative, Monad, MonadIO,
             MonadReader ClientState, MonadThrow)
 
---runTCPClientUnclose :: ClientSettings -> (AppData -> IO a) -> IO a
---runTCPClientUnclose (ClientSettings port host addrFamily readBufferSize) app = bracket
---    (getSocketFamilyTCP host port addrFamily)
---    (NS.sClose . fst)
---    (\(s, address) -> app AppData
---        { appRead' = safeRecv s readBufferSize
---        , appWrite' = sendAll s
---        , appSockAddr' = address
---        , appLocalAddr' = Nothing
---        , appCloseConnection' = return ()
---        , appRawSocket' = Just s
---        })
+runTCPClientUnclose :: ClientSettings -> (AppData -> IO a) -> IO a
+runTCPClientUnclose (ClientSettings port host addrFamily readBufferSize) app = bracket
+   (getSocketFamilyTCP host port addrFamily)
+   -- (NS.sClose . fst)
+   (const $ return ())
+   (\(s, address) -> app AppData
+       { appRead' = safeRecv s readBufferSize
+       , appWrite' = sendAll s
+       , appSockAddr' = address
+       , appLocalAddr' = Nothing
+       , appCloseConnection' = return ()
+       , appRawSocket' = Just s
+       })
 
 execClient :: S.ByteString -> Int -> Client a -> IO ()
 execClient host port client = do
@@ -116,7 +119,7 @@ execClientWithMap hashMapVar host port m = do
   let keyPair = (host, port)
   let mConn   = HM.lookup (host, port) hashMap
 
-  runTCPClient (clientSettings port host) $ \appData -> do
+  runTCPClientUnclose (clientSettings port host) $ \appData -> do
     let unclosableAppData = appData { appCloseConnection' = return () }
     case mConn of
       Nothing -> do
