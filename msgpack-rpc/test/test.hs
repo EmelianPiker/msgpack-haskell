@@ -3,6 +3,8 @@
 import           Control.Concurrent         (threadDelay)
 import           Control.Concurrent.Async   (forConcurrently, race_)
 import           Control.Concurrent.MVar    (newMVar)
+
+import           Control.Monad              (forM_)
 import           Control.Monad.Trans        (liftIO)
 
 import qualified Data.Cache.LRU             as LRU
@@ -19,6 +21,7 @@ main :: IO ()
 main = withSocketsDo $ defaultMain $
   testGroup "simple service"
   [ testCase "test_simple"      $ server `race_` (threadDelay 1000 >> client 123)
+  , testCase "test_sequence"    $ server `race_` (threadDelay 1000 >> clientsInSequence 10)
   , testCase "test_async_small" $ server `race_` (threadDelay 1000 >> concurrentClients 2)
   , testCase "test_async_big"   $ server `race_` (threadDelay 1000 >> concurrentClients 10)
   , testCase "test_map_small"   $ server `race_` (threadDelay 1000 >> twoClientsWithMap)
@@ -60,6 +63,9 @@ client n = execClient "127.0.0.1" port $ simpleClientAtions n
 clientWithMap :: ConnectionMap -> Int -> IO ()
 clientWithMap lruMapVar n
   = execClientWithMap lruMapVar "127.0.0.1" port $ simpleClientAtions n
+
+clientsInSequence :: Int -> IO ()
+clientsInSequence size = forM_ [1 .. size] $ \n -> client n
 
 concurrentClients :: Int -> IO ()
 concurrentClients size = do
