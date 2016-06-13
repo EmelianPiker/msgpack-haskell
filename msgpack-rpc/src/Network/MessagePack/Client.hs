@@ -34,6 +34,7 @@ module Network.MessagePack.Client (
   Connection,
   ConnectionMap,
   Client,
+  createMVarLRU,
   execClient,
   execClientWithMap,
 
@@ -112,9 +113,12 @@ runTCPClientUnclose (ClientSettings port host addrFamily readBufferSize) app = b
        , appRawSocket' = Just s
        })
 
+createMVarLRU :: Integer -> IO ConnectionMap
+createMVarLRU cacheSize = newMVar $ LRU.newLRU (Just 1)
+
 execClient :: S.ByteString -> Int -> Client a -> IO ()
 execClient host port client = do
-  singleMap <- newMVar $ LRU.newLRU (Just 1)
+  singleMap <- createMVarLRU 1
   execClientWithMap singleMap host port client
 
 execClientWithMap :: ConnectionMap -> S.ByteString -> Int -> Client a -> IO ()

@@ -7,13 +7,12 @@ import           Control.Concurrent.MVar    (newMVar)
 import           Control.Monad              (forM_)
 import           Control.Monad.Trans        (liftIO)
 
-import qualified Data.Cache.LRU             as LRU
-
 import           Test.Tasty                 (defaultMain, testGroup)
 import           Test.Tasty.HUnit           (testCase, (@?=))
 
 import           Network                    (withSocketsDo)
-import           Network.MessagePack.Client (Client, ConnectionMap, call, execClient,
+import           Network.MessagePack.Client (Client, ConnectionMap, call,
+                                             createMVarLRU, execClient,
                                              execClientWithMap)
 import           Network.MessagePack.Server (Server, method, serve)
 
@@ -74,12 +73,12 @@ concurrentClients size = do
 
 twoClientsWithMap :: IO ()
 twoClientsWithMap = do
-  lruMapVar <- newMVar $ LRU.newLRU (Just 2)
+  lruMapVar <- createMVarLRU 2
   clientWithMap lruMapVar 1
   clientWithMap lruMapVar 2
 
 concurrentClientsWithMap :: Int -> IO ()
 concurrentClientsWithMap size = do
-  lruMapVar <- newMVar $ LRU.newLRU $ Just $ toInteger (size `div` 2)
-  let tests   = [1 .. size]
+  lruMapVar <- createMVarLRU $ toInteger (size `div` 2)
+  let tests  = [1 .. size]
   () <$ forConcurrently tests (clientWithMap lruMapVar)
