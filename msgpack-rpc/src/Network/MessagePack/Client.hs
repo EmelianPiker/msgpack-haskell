@@ -35,6 +35,7 @@ module Network.MessagePack.Client (
   ConnectionMap,
   Client,
   createMVarLRU,
+  clearLRUMap,
   execClient,
   execClientWithMap,
 
@@ -48,7 +49,7 @@ module Network.MessagePack.Client (
 import           Control.Concurrent.MVar           (MVar, newMVar, putMVar,
                                                     takeMVar)
 import           Control.Exception                 (Exception, bracket)
-import           Control.Monad                     (when)
+import           Control.Monad                     (forM_, when)
 import           Control.Monad.Catch               (MonadThrow (..))
 import           Control.Monad.Extra               (whenJust)
 import           Control.Monad.Reader              (MonadReader, ReaderT, ask,
@@ -115,6 +116,16 @@ runTCPClientUnclose (ClientSettings port host addrFamily readBufferSize) app = b
 
 createMVarLRU :: Integer -> IO ConnectionMap
 createMVarLRU cacheSize = newMVar $ LRU.newLRU (Just 1)
+
+clearLRUMap :: ConnectionMap -> IO ()
+clearLRUMap lruMapVar = do
+  lruMap <- takeMVar lruMapVar
+
+  let lruSize = LRU.maxSize lruMap
+  let connections = map (fst . snd) $ LRU.toList lruMap
+  forM_ connections appCloseConnection'
+
+  putMVar lruMapVar $ LRU.newLRU lruSize
 
 execClient :: S.ByteString -> Int -> Client a -> IO ()
 execClient host port client = do
