@@ -115,7 +115,7 @@ runTCPClientUnclose (ClientSettings port host addrFamily readBufferSize) app = b
        })
 
 createMVarLRU :: Integer -> IO ConnectionMap
-createMVarLRU cacheSize = newMVar $ LRU.newLRU (Just 1)
+createMVarLRU = newMVar . LRU.newLRU . Just
 
 clearLRUMap :: ConnectionMap -> IO ()
 clearLRUMap lruMapVar = do
