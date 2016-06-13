@@ -46,6 +46,10 @@ library
                   -Wall
                   -fno-warn-orphans
                   -O2
+  default-extensions:  OverloadedStrings
+                     , RecordWildCards
+                     , DeriveDataTypeable
+                     , GeneralizedNewtypeDeriving
 
 test-suite msgpack-rpc-test
   default-language: Haskell2010

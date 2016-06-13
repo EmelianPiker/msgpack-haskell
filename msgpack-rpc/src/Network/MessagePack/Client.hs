@@ -64,8 +64,7 @@ import           Data.Conduit                      (ResumableSource, Sink, ($$),
                                                     ($$+), ($$++))
 import qualified Data.Conduit.Binary               as CB
 import           Data.Conduit.Network              (appSink, appSource,
-                                                    clientSettings,
-                                                    runTCPClient)
+                                                    clientSettings)
 import           Data.Conduit.Serialization.Binary (sinkGet)
 import           Data.MessagePack                  (MessagePack (fromObject, toObject),
                                                     Object, pack)
@@ -177,8 +176,8 @@ instance (MessagePack o, RpcType r) => RpcType (o -> r) where
 
 rpcCall :: String -> [Object] -> Client Object
 rpcCall methodName args = do
-  ClientState lruMapVar remoteAddr <- ask
-  lruMap <- liftIO $ takeMVar lruMapVar
+  ClientState {..} <- ask
+  lruMap <- liftIO $ takeMVar refMap
   let (touchedMap, Just (appData, Connection rsrc sink msgid)) = LRU.lookup remoteAddr lruMap
 
   (rsrc', res) <- liftIO $ do
@@ -188,7 +187,7 @@ rpcCall methodName args = do
   let updatedConnection = Connection rsrc' sink (msgid + 1)
   let updatedClientData = (appData, updatedConnection)
   let updatedMap        = LRU.insert remoteAddr updatedClientData touchedMap
-  liftIO $ putMVar lruMapVar updatedMap
+  liftIO $ putMVar refMap updatedMap
 
   case fromObject res of
     Nothing -> throwM $ ProtocolError "invalid response data"
