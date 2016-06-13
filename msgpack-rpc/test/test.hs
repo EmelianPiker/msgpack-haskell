@@ -5,13 +5,13 @@ import           Control.Concurrent.Async   (forConcurrently, race_)
 import           Control.Concurrent.MVar    (newMVar)
 import           Control.Monad.Trans        (liftIO)
 
-import qualified Data.HashMap.Strict        as HM
+import qualified Data.Cache.LRU             as LRU
 
 import           Test.Tasty                 (defaultMain, testGroup)
 import           Test.Tasty.HUnit           (testCase, (@?=))
 
 import           Network                    (withSocketsDo)
-import           Network.MessagePack.Client (Client, IOMapVar, call, execClient,
+import           Network.MessagePack.Client (Client, ConnectionMap, call, execClient,
                                              execClientWithMap)
 import           Network.MessagePack.Server (Server, method, serve)
 
@@ -57,9 +57,9 @@ simpleClientAtions n = do
 client :: Int -> IO ()
 client n = execClient "127.0.0.1" port $ simpleClientAtions n
 
-clientWithMap :: IOMapVar -> Int -> IO ()
-clientWithMap hashMapVar n
-  = execClientWithMap hashMapVar "127.0.0.1" port $ simpleClientAtions n
+clientWithMap :: ConnectionMap -> Int -> IO ()
+clientWithMap lruMapVar n
+  = execClientWithMap lruMapVar "127.0.0.1" port $ simpleClientAtions n
 
 concurrentClients :: Int -> IO ()
 concurrentClients size = do
@@ -68,12 +68,12 @@ concurrentClients size = do
 
 twoClientsWithMap :: IO ()
 twoClientsWithMap = do
-  hashMapVar <- newMVar HM.empty
-  clientWithMap hashMapVar 1
-  clientWithMap hashMapVar 2
+  lruMapVar <- newMVar $ LRU.newLRU (Just 2)
+  clientWithMap lruMapVar 1
+  clientWithMap lruMapVar 2
 
 concurrentClientsWithMap :: Int -> IO ()
 concurrentClientsWithMap size = do
-  hashMapVar <- newMVar HM.empty
+  lruMapVar <- newMVar $ LRU.newLRU $ Just $ toInteger size
   let tests   = [1 .. size]
-  () <$ forConcurrently tests (clientWithMap hashMapVar)
+  () <$ forConcurrently tests (clientWithMap lruMapVar)

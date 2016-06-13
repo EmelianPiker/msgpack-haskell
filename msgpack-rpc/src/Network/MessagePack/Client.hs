@@ -32,7 +32,7 @@
 module Network.MessagePack.Client (
   -- * MessagePack Client type
   Connection,
-  IOMapVar,
+  ConnectionMap,
   Client,
   execClient,
   execClientWithMap,
@@ -49,12 +49,15 @@ import           Control.Concurrent.MVar           (MVar, newMVar, putMVar,
 import           Control.Exception                 (Exception, bracket)
 import           Control.Monad                     (when)
 import           Control.Monad.Catch               (MonadThrow (..))
+import           Control.Monad.Extra               (whenJust)
 import           Control.Monad.Reader              (MonadReader, ReaderT, ask,
                                                     runReaderT)
 import           Control.Monad.Trans               (MonadIO, liftIO)
 
 import           Data.Binary                       as Binary
 import qualified Data.ByteString                   as S
+import           Data.Cache.LRU                    (LRU)
+import qualified Data.Cache.LRU                    as LRU
 import           Data.Conduit                      (ResumableSource, Sink, ($$),
                                                     ($$+), ($$++))
 import qualified Data.Conduit.Binary               as CB
@@ -62,8 +65,6 @@ import           Data.Conduit.Network              (appSink, appSource,
                                                     clientSettings,
                                                     runTCPClient)
 import           Data.Conduit.Serialization.Binary (sinkGet)
-import           Data.HashMap.Strict               (HashMap)
-import qualified Data.HashMap.Strict               as HM
 import           Data.MessagePack                  (MessagePack (fromObject, toObject),
                                                     Object, pack)
 import           Data.Typeable                     (Typeable)
@@ -83,16 +84,19 @@ data Connection
     !(Sink S.ByteString IO ())
     !Int
 
-type IOMapVar    = MVar (HashMap (S.ByteString, Int) Connection)
+type RemoteKey      = (S.ByteString, Int)
+type ConnectionData = (AppData, Connection)
+type ConnectionMap  = MVar (LRU RemoteKey ConnectionData)
+
 data ClientState = ClientState
-  { refMap     :: IOMapVar
-  , clientAddr :: (S.ByteString, Int)
+  { refMap     :: ConnectionMap
+  , remoteAddr :: RemoteKey
   }
 
-newtype Client a
-  = ClientT { runClient :: ReaderT ClientState IO a }
-  deriving (Functor, Applicative, Monad, MonadIO,
-            MonadReader ClientState, MonadThrow)
+newtype Client a = Client
+  { runClient :: ReaderT ClientState IO a
+  } deriving (Functor, Applicative, Monad, MonadIO,
+              MonadReader ClientState, MonadThrow)
 
 runTCPClientUnclose :: ClientSettings -> (AppData -> IO a) -> IO a
 runTCPClientUnclose (ClientSettings port host addrFamily readBufferSize) app = bracket
@@ -104,33 +108,35 @@ runTCPClientUnclose (ClientSettings port host addrFamily readBufferSize) app = b
        , appWrite' = sendAll s
        , appSockAddr' = address
        , appLocalAddr' = Nothing
-       , appCloseConnection' = return ()
+       , appCloseConnection' = NS.sClose s
        , appRawSocket' = Just s
        })
 
 execClient :: S.ByteString -> Int -> Client a -> IO ()
 execClient host port client = do
-  emptyMap <- newMVar HM.empty
-  execClientWithMap emptyMap host port client
+  singleMap <- newMVar $ LRU.newLRU (Just 1)
+  execClientWithMap singleMap host port client
 
-execClientWithMap :: IOMapVar -> S.ByteString -> Int -> Client a -> IO ()
-execClientWithMap hashMapVar host port m = do
-  hashMap    <- takeMVar hashMapVar
+execClientWithMap :: ConnectionMap -> S.ByteString -> Int -> Client a -> IO ()
+execClientWithMap lruMapVar host port m = do
+  lruMap <- takeMVar lruMapVar
   let keyPair = (host, port)
-  let mConn   = HM.lookup (host, port) hashMap
+  let (updatedMap, mData) = LRU.lookup (host, port) lruMap
 
-  runTCPClientUnclose (clientSettings port host) $ \appData -> do
-    let unclosableAppData = appData { appCloseConnection' = return () }
-    case mConn of
-      Nothing -> do
-        (rsrc, _) <- appSource unclosableAppData $$+ return ()
-        let newConnection = Connection rsrc (appSink unclosableAppData) 0
-        let newMap        = HM.insert keyPair newConnection hashMap
-        putMVar hashMapVar newMap
-      Just _  ->
-        putMVar hashMapVar hashMap
+  case mData of
+    Just _  -> putMVar lruMapVar updatedMap
+    Nothing -> runTCPClientUnclose (clientSettings port host) $ \appData -> do
+      (rsrc, _) <- appSource appData $$+ return ()
 
-    () <$ runReaderT (runClient m) (ClientState hashMapVar keyPair)
+      let newConnection = Connection rsrc (appSink appData) 0
+      let newClientData = (appData, newConnection)
+      let (newMap, oldConn) = LRU.insertInforming keyPair newClientData updatedMap
+
+      whenJust oldConn $ \(_, (oldData, _)) -> appCloseConnection' oldData
+
+      putMVar lruMapVar newMap
+
+  () <$ runReaderT (runClient m) (ClientState lruMapVar keyPair)
 
 -- | RPC error type
 data RpcError
@@ -156,17 +162,18 @@ instance (MessagePack o, RpcType r) => RpcType (o -> r) where
 
 rpcCall :: String -> [Object] -> Client Object
 rpcCall methodName args = do
-  ClientState hashMapVar myAddr <- ask
-  hashMap <- liftIO $ takeMVar hashMapVar
-  let Just (Connection rsrc sink msgid) = HM.lookup myAddr hashMap
+  ClientState lruMapVar remoteAddr <- ask
+  lruMap <- liftIO $ takeMVar lruMapVar
+  let (touchedMap, Just (appData, Connection rsrc sink msgid)) = LRU.lookup remoteAddr lruMap
 
   (rsrc', res) <- liftIO $ do
     CB.sourceLbs (pack (0 :: Int, msgid, methodName, args)) $$ sink
     rsrc $$++ sinkGet Binary.get
 
   let updatedConnection = Connection rsrc' sink (msgid + 1)
-  let updatedMap        = HM.insert myAddr updatedConnection hashMap
-  liftIO $ putMVar hashMapVar updatedMap
+  let updatedClientData = (appData, updatedConnection)
+  let updatedMap        = LRU.insert remoteAddr updatedClientData touchedMap
+  liftIO $ putMVar lruMapVar updatedMap
 
   case fromObject res of
     Nothing -> throwM $ ProtocolError "invalid response data"
