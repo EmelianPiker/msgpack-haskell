@@ -43,8 +43,8 @@ server =
     echo :: String -> Server String
     echo s = return $ "***" ++ s ++ "***"
 
-simpleClientAtions :: Int -> Client ()
-simpleClientAtions n = do
+simpleClientActions :: Int -> Client ()
+simpleClientActions n = do
   r1 <- add n n
   liftIO $ r1 @?= n + n
   r2 <- echo $ "hello" ++ show n
@@ -57,11 +57,11 @@ simpleClientAtions n = do
     echo = call "echo"
 
 client :: Int -> IO ()
-client n = execClient "127.0.0.1" port $ simpleClientAtions n
+client n = execClient "127.0.0.1" port $ simpleClientActions n
 
 clientWithMap :: ConnectionMap -> Int -> IO ()
 clientWithMap lruMapVar n
-  = execClientWithMap lruMapVar "127.0.0.1" port $ simpleClientAtions n
+  = execClientWithMap lruMapVar "127.0.0.1" port $ simpleClientActions n
 
 clientsInSequence :: Int -> IO ()
 clientsInSequence size = forM_ [1 .. size] $ \n -> client n
