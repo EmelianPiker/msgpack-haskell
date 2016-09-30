@@ -52,4 +52,5 @@ test-suite msgpack-tests
                   , QuickCheck           >=2.7
                   , tasty                >=0.10
                   , tasty-quickcheck     >=0.8
+                  , text                 >=1.2
                   , msgpack

@@ -119,10 +119,10 @@ getExt = do
     _ -> empty
   (,) <$> getWord8 <*> getByteString len
 
-getExc :: Get a -> Get (Maybe a)
-getExc e = do
+getExc :: Get a -> Get b -> Get (Either a b)
+getExc l r = do
     tag 0xC0
-    Nothing <$ tag 0xE0 <|> (tag 0xE1 >> Just <$> e)
+    (tag 0xE0 >> Left <$> l) <|> (tag 0xE1 >> Right <$> r)
 
 getInt8 :: Get Int8
 getInt8 = fromIntegral <$> getWord8

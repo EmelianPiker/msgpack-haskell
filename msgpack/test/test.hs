@@ -8,6 +8,7 @@ import qualified Data.ByteString.Char8      as S
 import qualified Data.ByteString.Lazy.Char8 as L
 import           Data.Maybe
 import           Data.MessagePack
+import qualified Data.Text                  as T
 import           Test.QuickCheck
 import           Test.Tasty
 import           Test.Tasty.QuickCheck
@@ -119,10 +120,11 @@ tests =
       \(a :: SerializableErrorBox ArrayException) ->
         fromObjectAsError (toObject a) == Just a
     , testProperty "non-serializable exception fromObject behaviour" $
-        mid' NonSerializableError == Nothing
+      \(a :: NonSerializableError) ->
+        mid' a == Nothing
      , testProperty "non-serializable exception fromObjectAsError behaviour" $
-        let e = NonSerializableError
-        in  fromObjectAsError (toObject e) == Just e
+      \(a :: NonSerializableError) ->
+        fromObjectAsError (toObject a) == Just a
     ]
 
 
@@ -144,3 +146,6 @@ instance Arbitrary ArrayException where
 
 instance Arbitrary e => Arbitrary (SerializableErrorBox e) where
     arbitrary = SerializableErrorBox <$> arbitrary
+
+instance Arbitrary NonSerializableError where
+    arbitrary = NonSerializableError . T.pack <$> arbitrary

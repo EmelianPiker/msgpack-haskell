@@ -127,6 +127,6 @@ putExt typ dat = do
   putWord8 typ
   putByteString dat
 
-putExc :: (a -> Put) -> Maybe a -> Put
-putExc _ Nothing  = putWord8 0xC0 >> putWord8 0xE0
-putExc p (Just o) = putWord8 0xC0 >> putWord8 0xE1 >> p o
+putExc :: (a -> Put) -> (b -> Put) -> Either a b -> Put
+putExc p _ (Left  o) = putWord8 0xC0 >> putWord8 0xE0 >> p o
+putExc _ q (Right o) = putWord8 0xC0 >> putWord8 0xE1 >> q o

@@ -74,7 +74,7 @@ data Object
   | ObjectExt    {-# UNPACK #-} !Word8 !S.ByteString
     -- ^ represents a tuple of an integer and a byte array where
     -- the integer represents type information and the byte array represents data.
-  | ObjectExc                   !(Maybe Object)
+ | ObjectExc                    !(Either Object Object)
     -- ^ represents serializable exception
   deriving (Show, Eq, Ord, Typeable)
 
@@ -96,7 +96,7 @@ getObject =
   <|> ObjectBin    <$> getBin
   <|> ObjectArray  <$> getArray getObject
   <|> ObjectMap    <$> getMap getObject getObject
-  <|> ObjectExc    <$> getExc getObject
+  <|> ObjectExc    <$> getExc getObject getObject
   <|> uncurry ObjectExt <$> getExt
 
 putObject :: Object -> Put
@@ -111,7 +111,7 @@ putObject = \case
   ObjectArray  a -> putArray putObject a
   ObjectMap    m -> putMap putObject putObject m
   ObjectExt  b r -> putExt b r
-  ObjectExc    e -> putExc putObject e
+  ObjectExc    e -> putExc putObject putObject e
 
 instance Binary Object where
   get = getObject
@@ -200,22 +200,22 @@ newtype SerializableErrorBox e = SerializableErrorBox e
 
 instance (MessagePack e, Exception e) =>
           MessagePack (SerializableErrorBox e) where
-  toObject (SerializableErrorBox e) = ObjectExc $ Just $ toObject e
+  toObject (SerializableErrorBox e) = ObjectExc $ Right $ toObject e
   fromObject _ = Nothing
   fromObjectAsError = \case
-    ObjectExc (Just e) -> SerializableErrorBox <$> fromObject e
-    _                  -> Nothing  
+    ObjectExc (Right e) -> SerializableErrorBox <$> fromObject e
+    _                   -> Nothing  
 
 
-data NonSerializableError = NonSerializableError
+data NonSerializableError = NonSerializableError T.Text
     deriving (Show, Eq)
 
 instance MessagePack NonSerializableError where
-  toObject _ = ObjectExc Nothing
+  toObject (NonSerializableError msg) = ObjectExc $ Left $ toObject msg
   fromObject _ = Nothing
   fromObjectAsError = \case
-    ObjectExc Nothing -> Just NonSerializableError
-    _                 -> Nothing
+    ObjectExc (Left msg) -> NonSerializableError <$> fromObject msg
+    _                    -> Nothing
 
 -- util instances
 
