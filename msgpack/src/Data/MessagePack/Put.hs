@@ -14,7 +14,7 @@
 
 module Data.MessagePack.Put (
   putNil, putBool, putInt, putFloat, putDouble,
-  putStr, putBin, putArray, putMap, putExt,
+  putStr, putBin, putArray, putMap, putExt, putExc
   ) where
 
 import           Data.Binary
@@ -29,7 +29,7 @@ import qualified Data.Vector         as V
 import           Prelude             hiding (putStr)
 
 putNil :: Put
-putNil = putWord8 0xC0
+putNil = putWord8 0xC0 >> putWord8 0x00
 
 putBool :: Bool -> Put
 putBool False = putWord8 0xC2
@@ -126,3 +126,7 @@ putExt typ dat = do
         | otherwise     -> putWord8 0xC9 >> putWord32be (fromIntegral len)
   putWord8 typ
   putByteString dat
+
+putExc :: (a -> Put) -> Maybe a -> Put
+putExc _ Nothing  = putWord8 0xC0 >> putWord8 0xE0
+putExc p (Just o) = putWord8 0xC0 >> putWord8 0xE1 >> p o

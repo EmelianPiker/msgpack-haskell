@@ -16,7 +16,7 @@
 
 module Data.MessagePack.Get(
   getNil, getBool, getInt, getFloat, getDouble,
-  getStr, getBin, getArray, getMap, getExt,
+  getStr, getBin, getArray, getMap, getExt, getExc
   ) where
 
 import           Control.Applicative
@@ -32,7 +32,7 @@ import qualified Data.Text.Encoding  as T
 import qualified Data.Vector         as V
 
 getNil :: Get ()
-getNil = tag 0xC0
+getNil = tag 0xC0 >> tag 0x00
 
 getBool :: Get Bool
 getBool =
@@ -118,6 +118,11 @@ getExt = do
     0xC9 -> fromIntegral <$> getWord32be
     _ -> empty
   (,) <$> getWord8 <*> getByteString len
+
+getExc :: Get a -> Get (Maybe a)
+getExc e = do
+    tag 0xC0
+    Nothing <$ tag 0xE0 <|> (tag 0xE1 >> Just <$> e)
 
 getInt8 :: Get Int8
 getInt8 = fromIntegral <$> getWord8

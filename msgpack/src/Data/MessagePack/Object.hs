@@ -25,11 +25,14 @@ module Data.MessagePack.Object(
 
   -- * MessagePack Serializable Types
   MessagePack(..),
+  SerializableErrorBox(..),
+  NonSerializableError(..)
   ) where
 
 import           Control.Applicative
 import           Control.Arrow
 import           Control.DeepSeq
+import           Control.Exception
 import           Data.Binary
 import qualified Data.ByteString        as S
 import qualified Data.ByteString.Lazy   as L
@@ -71,12 +74,15 @@ data Object
   | ObjectExt    {-# UNPACK #-} !Word8 !S.ByteString
     -- ^ represents a tuple of an integer and a byte array where
     -- the integer represents type information and the byte array represents data.
+  | ObjectExc                   !(Maybe Object)
+    -- ^ represents serializable exception
   deriving (Show, Eq, Ord, Typeable)
 
 instance NFData Object where
   rnf obj = case obj of
     ObjectArray a -> rnf a
     ObjectMap   m -> rnf m
+    ObjectExc   e -> rnf e
     _             -> ()
 
 getObject :: Get Object
@@ -90,6 +96,7 @@ getObject =
   <|> ObjectBin    <$> getBin
   <|> ObjectArray  <$> getArray getObject
   <|> ObjectMap    <$> getMap getObject getObject
+  <|> ObjectExc    <$> getExc getObject
   <|> uncurry ObjectExt <$> getExt
 
 putObject :: Object -> Put
@@ -104,14 +111,19 @@ putObject = \case
   ObjectArray  a -> putArray putObject a
   ObjectMap    m -> putMap putObject putObject m
   ObjectExt  b r -> putExt b r
+  ObjectExc    e -> putExc putObject e
 
 instance Binary Object where
   get = getObject
   put = putObject
 
 class MessagePack a where
-  toObject   :: a -> Object
-  fromObject :: Object -> Maybe a
+  toObject          :: a -> Object
+  fromObject        :: Object -> Maybe a
+  
+  -- if object represents error rather than data
+  fromObjectAsError :: Object -> Maybe a
+  fromObjectAsError _ = Nothing
 
 -- core instances
 
@@ -180,6 +192,30 @@ instance (MessagePack a, MessagePack b) => MessagePack (Assoc (V.Vector (a, b)))
       Assoc <$> V.mapM (\(k, v) -> (,) <$> fromObject k <*> fromObject v) xs
     _ ->
       Nothing
+
+-- errors
+
+newtype SerializableErrorBox e = SerializableErrorBox e
+  deriving (Show, Eq)
+
+instance (MessagePack e, Exception e) =>
+          MessagePack (SerializableErrorBox e) where
+  toObject (SerializableErrorBox e) = ObjectExc $ Just $ toObject e
+  fromObject _ = Nothing
+  fromObjectAsError = \case
+    ObjectExc (Just e) -> SerializableErrorBox <$> fromObject e
+    _                  -> Nothing  
+
+
+data NonSerializableError = NonSerializableError
+    deriving (Show, Eq)
+
+instance MessagePack NonSerializableError where
+  toObject _ = ObjectExc Nothing
+  fromObject _ = Nothing
+  fromObjectAsError = \case
+    ObjectExc Nothing -> Just NonSerializableError
+    _                 -> Nothing
 
 -- util instances
 
