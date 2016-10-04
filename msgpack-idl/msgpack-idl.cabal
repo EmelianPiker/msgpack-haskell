@@ -29,7 +29,7 @@ library
                      , containers       >= 0.4
                      , filepath         >= 1.1 && < 1.4
                      , directory
-                     , msgpack          == 0.7.*
+                     , data-msgpack     >= 0.0.4
                      , peggy            == 0.3.*
 
   ghc-options:         -Wall

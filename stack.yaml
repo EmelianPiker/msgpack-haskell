@@ -3,9 +3,12 @@ flags: {}
 extra-deps:
 - peggy-0.3.2
 packages:
-- msgpack/
+- location:
+    git: https://github.com/TokTok/hs-msgpack.git
+    commit: d2b78df9d4b109d9a8b1fdbd1d374f50af0c34e1
+  extra-dep: true
 - msgpack-rpc/
-- msgpack-aeson/
+# - msgpack-aeson/
 nix:
     enable: false
     packages: [zlib]

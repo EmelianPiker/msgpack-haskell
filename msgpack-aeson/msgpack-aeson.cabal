@@ -20,7 +20,7 @@ library
   build-depends:       base                 >=4.7 && <5
                      , aeson                >=0.8
                      , bytestring           >=0.10
-                     , msgpack              >=1.0
+                     , data-msgpack         >=0.0.4
                      , scientific           >=0.3
                      , text                 >=1.2
                      , unordered-containers >=0.2
