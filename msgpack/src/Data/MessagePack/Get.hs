@@ -119,18 +119,6 @@ getExt = do
     _ -> empty
   (,) <$> getWord8 <*> getByteString len
 
-getInt8 :: Get Int8
-getInt8 = fromIntegral <$> getWord8
-
-getInt16be :: Get Int16
-getInt16be = fromIntegral <$> getWord16be
-
-getInt32be :: Get Int32
-getInt32be = fromIntegral <$> getWord32be
-
-getInt64be :: Get Int64
-getInt64be = fromIntegral <$> getWord64be
-
 tag :: Word8 -> Get ()
 tag t = do
   b <- getWord8

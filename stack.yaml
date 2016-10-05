@@ -1,4 +1,4 @@
-resolver: lts-6.1
+resolver: lts-7.1
 flags: {}
 extra-deps:
 - peggy-0.3.2
