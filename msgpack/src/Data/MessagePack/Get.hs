@@ -22,7 +22,7 @@ module Data.MessagePack.Get(
 import           Control.Applicative
 import           Control.Monad
 import           Data.Binary
-import           Data.Binary.Get
+import           Data.Binary.Get     hiding (getInt16be, getInt32be, getInt64be, getInt8)
 import           Data.Binary.IEEE754
 import           Data.Bits
 import qualified Data.ByteString     as S
@@ -73,7 +73,7 @@ getStr = do
     _    -> empty
   bs <- getByteString len
   case T.decodeUtf8' bs of
-    Left _ -> empty
+    Left _  -> empty
     Right v -> return v
 
 getBin :: Get S.ByteString
